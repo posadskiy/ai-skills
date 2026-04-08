@@ -227,7 +227,7 @@ If using Grafana Alloy, split the `loki.process` block to handle Nginx JSON sepa
 from Java/Logstash JSON using `stage.match`:
 
 ```alloy
-loki.process "costy" {
+loki.process "<your-namespace>" {   // replace with your Kubernetes namespace name
   stage.drop {
     older_than          = "120h"
     drop_counter_reason = "timestamp_exceeds_cloud_ingest_window"
