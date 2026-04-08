@@ -10,7 +10,7 @@ description: >-
 compatibility: Requires React with React Router v6, Vite bundler, and a Grafana Cloud account. Nginx JSON log shipping is optional and works with any container runtime or deployment system.
 metadata:
   author: posadskiy
-  stack: React 19, Vite 6, React Router v7, @grafana/faro-react, @grafana/faro-web-tracing, @grafana/faro-rollup-plugin, Nginx, Grafana Cloud, Grafana Alloy
+  stack: React 19, Vite 6, React Router v6/v7, @grafana/faro-react, @grafana/faro-web-tracing, @grafana/faro-rollup-plugin, Nginx, Grafana Cloud, Grafana Alloy
 ---
 
 # React + Grafana Cloud Observability
@@ -21,6 +21,29 @@ all flowing into Grafana Cloud.
 
 **See [references/code-templates.md](references/code-templates.md) for complete copy-paste code.**
 **See [references/grafana-cloud-setup.md](references/grafana-cloud-setup.md) for Grafana Cloud UI steps.**
+
+---
+
+## Prerequisite — ask the user for the Faro collector URL
+
+**Before wiring code or Docker, the agent must obtain this from the user** (or guide them to copy it from Grafana):
+
+- **Faro collector URL** — full HTTPS URL from **Grafana Cloud → Observability → Frontend → _this_ app → Instrumentation / Web SDK**, field `url` in the snippet.
+
+  Shape:
+
+  `https://faro-collector-prod-<region>.grafana.net/collect/<ingest-key>`
+
+  Example shape only (do **not** reuse for another project):  
+  `https://faro-collector-prod-eu-west-2.grafana.net/collect/451ee59b19fd23cfa38502c8993ecf6a`
+
+**Why the agent must ask**
+
+1. **Each Frontend Observability app has its own `/collect/<ingest-key>`** — that key routes browser RUM to **that** app. Copying a URL from a **different** repo or app (e.g. another product’s build script) sends data to the **wrong** Grafana app or causes **CORS** failures.
+2. **`VITE_FARO_URL` is inlined at build time** — wrong URL means empty UI for the app the user cares about.
+3. **CORS** is configured **per Grafana Frontend app** — production origins (`https://example.com`, `https://www.example.com`, etc.) must be allowlisted on **the same app** whose collector URL you use. See [references/grafana-cloud-setup.md](references/grafana-cloud-setup.md#cors-and-the-collector-url).
+
+**If the user has not provided the URL yet:** ask them to create or open their Frontend app in Grafana, copy the **`url`** from the instrumentation snippet, and paste it. Do not invent or default to another project’s ingest key.
 
 ---
 
@@ -45,6 +68,8 @@ all flowing into Grafana Cloud.
 npm install @grafana/faro-react @grafana/faro-web-tracing
 npm install --save-dev @grafana/faro-rollup-plugin
 ```
+
+Peer dependency: `@grafana/faro-react` may list an optional `react-router@7` peer while your app uses v6 — use `npm install --legacy-peer-deps` if npm errors, or align to React Router v7. See project `package.json` / lockfile.
 
 ---
 

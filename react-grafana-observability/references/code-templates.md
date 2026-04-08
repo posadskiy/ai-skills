@@ -4,6 +4,23 @@ Complete, copy-paste ready code for every file that needs to change.
 
 ---
 
+## Faro collector URL (read first)
+
+**Do not copy a collector URL from another repository or product.** Each Grafana Frontend Observability app has a unique path:
+
+`https://faro-collector-prod-<region>.grafana.net/collect/<ingest-key>`
+
+Use the **`url`** from **this** app’s Instrumentation snippet. The agent implementing the skill should have asked the user for that URL (or confirmed they created the app and pasted it).
+
+After you have it, either:
+
+- set **`VITE_FARO_URL`** at build time / Docker `--build-arg`, and use **Pattern A** below, or  
+- set a **`DEFAULT_FARO_COLLECT_URL`** constant in `faro.ts` to that exact string (production default) and optionally still allow `VITE_FARO_URL` to override — **Pattern B**.
+
+If the ingest key does not match the Grafana app you open in the UI, or if **CORS allowed origins** on that app do not include your site’s `https://` origin, the browser will show CORS errors and no RUM in that app.
+
+---
+
 ## faro.ts {#faroTs}
 
 `src/lib/observability/faro.ts` — create this file.

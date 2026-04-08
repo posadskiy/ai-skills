@@ -9,6 +9,10 @@ Step-by-step UI walkthrough for everything that needs to be configured in Grafan
 This gives you the Faro collector URL (`VITE_FARO_URL`) and the `appId` / `stackId` values
 for the source map uploader.
 
+**Each app has its own ingest path.** The segment after `/collect/` is a **per-app routing key** (sometimes shown as a hex string). It is **not** interchangeable with another Grafana Frontend app — copying another project’s URL sends RUM to that app and often causes **CORS** errors for your domain. Example shape (illustration only):
+
+`https://faro-collector-prod-eu-west-2.grafana.net/collect/451ee59b19fd23cfa38502c8993ecf6a`
+
 1. Sign in to [grafana.com](https://grafana.com) → select your organization → open your stack → **Launch** Grafana
 2. Left menu → expand **Observability** → select **Frontend**
 3. Click **Create new** → fill in:
