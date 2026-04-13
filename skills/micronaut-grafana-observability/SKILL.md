@@ -165,7 +165,7 @@ annotations:
 - name: OTEL_TRACES_SAMPLER
   value: parentbased_traceidratio
 - name: OTEL_TRACES_SAMPLER_ARG
-          value: "1.0"   # reduce to e.g. "0.2" only for high-traffic services
+  value: "1.0"   # reduce to e.g. "0.2" only for high-traffic services
 ```
 
 The Alloy service DNS (`grafana-alloy.observability.svc.cluster.local:4317`) assumes Alloy is in the `observability` namespace. Adjust if different.
