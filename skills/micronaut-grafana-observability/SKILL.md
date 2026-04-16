@@ -78,12 +78,12 @@ Full file → [references/code-templates.md](references/code-templates.md#logbac
 
 ```xml
 <configuration>
-  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-    <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
-  </appender>
-  <root level="INFO">
-    <appender-ref ref="STDOUT"/>
-  </root>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
 </configuration>
 ```
 
@@ -139,6 +139,20 @@ otel:
       arg: "1.0"   # 100% by default; reduce (e.g. "0.2") only for high-traffic services
 ```
 
+### Production gotcha (important)
+
+If security is enabled, ensure `/prometheus` is explicitly allowed in `application-prod.yml`.
+Without this, Alloy discovers targets but scraping returns `Unauthorized` and services do not
+appear in Grafana metrics dashboards.
+
+```yaml
+micronaut:
+  security:
+    intercept-url-map:
+      - pattern: /prometheus
+        access: isAnonymous()
+```
+
 ---
 
 ## Step 4 — Kubernetes Deployment
@@ -176,6 +190,28 @@ The Alloy service DNS (`grafana-alloy.observability.svc.cluster.local:4317`) ass
 
 The Alloy config handles all three pillars. It must be deployed in-cluster (e.g. via Helm `values.yaml` or a ConfigMap).
 Full config → [references/code-templates.md](references/code-templates.md#alloy-config).
+
+### Namespace discovery gotcha (important)
+
+Alloy only collects logs/metrics from namespaces listed in `discovery.kubernetes.namespaces`.
+If a service runs in a namespace not listed there (for example `microservices`), it will not
+show up in Loki/Mimir even if service config is correct.
+
+Use a shared multi-namespace discovery block so metrics and logs stay in sync:
+
+```alloy
+discovery.kubernetes "pods" {
+  role = "pod"
+  namespaces {
+    names = ["costy", "microservices"] // extend as needed
+  }
+}
+
+discovery.relabel "metrics" { targets = discovery.kubernetes.pods.targets ... }
+discovery.relabel "logs"    { targets = discovery.kubernetes.pods.targets ... }
+```
+
+Keep namespace list in one place and extend it as new namespaces are onboarded.
 
 ### Metrics pipeline
 ```alloy
@@ -247,3 +283,13 @@ otelcol.exporter.otlphttp "grafana_cloud" {
 | Distributed traces | Explore → Tempo → search by `service.name` |
 | Log → trace correlation | Click `traceId` in a Loki log line → jumps to Tempo span |
 | Trace → log correlation | In Tempo span, click "Logs for this span" |
+
+---
+
+## Quick troubleshooting checklist
+
+1. **Alloy watches the right namespace(s):** verify `discovery.kubernetes ... namespaces` includes your app namespace.
+2. **Prometheus endpoint is public for Alloy:** `curl http://<service>:<port>/prometheus` from cluster should not return `Unauthorized`.
+3. **Pod annotations are present:** `prometheus.io/scrape=true`, `prometheus.io/path=/prometheus`, `prometheus.io/port=<port>`.
+4. **Service emits JSON logs:** log lines should be valid Logstash JSON (with `level` and `mdc.traceId`/`mdc.spanId` when traced).
+5. **Alloy tailers are active:** Alloy logs should show `tailer running` for your pod.

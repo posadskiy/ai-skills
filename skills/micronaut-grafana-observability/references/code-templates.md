@@ -12,57 +12,57 @@ are managed by `io.micronaut.platform:micronaut-platform`.
 
 ```xml
 <properties>
-  <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
+    <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
 </properties>
 
 <dependencyManagement>
-  <dependencies>
+<dependencies>
     <dependency>
-      <groupId>io.micronaut.platform</groupId>
-      <artifactId>micronaut-platform</artifactId>
-      <version>${micronaut.version}</version>
-      <type>pom</type>
-      <scope>import</scope>
+        <groupId>io.micronaut.platform</groupId>
+        <artifactId>micronaut-platform</artifactId>
+        <version>${micronaut.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
     </dependency>
     <dependency>
-      <groupId>net.logstash.logback</groupId>
-      <artifactId>logstash-logback-encoder</artifactId>
-      <version>${logstash-logback-encoder.version}</version>
+        <groupId>net.logstash.logback</groupId>
+        <artifactId>logstash-logback-encoder</artifactId>
+        <version>${logstash-logback-encoder.version}</version>
     </dependency>
-  </dependencies>
+</dependencies>
 </dependencyManagement>
 
 <dependencies>
-  <!-- Micrometer + Prometheus: exposes /prometheus endpoint for Alloy to scrape -->
-  <dependency>
+<!-- Micrometer + Prometheus: exposes /prometheus endpoint for Alloy to scrape -->
+<dependency>
     <groupId>io.micronaut.micrometer</groupId>
     <artifactId>micronaut-micrometer-core</artifactId>
-  </dependency>
-  <dependency>
+</dependency>
+<dependency>
     <groupId>io.micronaut.micrometer</groupId>
     <artifactId>micronaut-micrometer-registry-prometheus</artifactId>
-  </dependency>
+</dependency>
 
-  <!--
-    OTel HTTP instrumentation: auto-instruments server/client HTTP + JDBC,
-    and injects traceId/spanId into SLF4J MDC so LogstashEncoder
-    includes them in every JSON log line automatically.
-  -->
-  <dependency>
+<!--
+  OTel HTTP instrumentation: auto-instruments server/client HTTP + JDBC,
+  and injects traceId/spanId into SLF4J MDC so LogstashEncoder
+  includes them in every JSON log line automatically.
+-->
+<dependency>
     <groupId>io.micronaut.tracing</groupId>
     <artifactId>micronaut-tracing-opentelemetry-http</artifactId>
-  </dependency>
-  <dependency>
+</dependency>
+<dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-exporter-otlp</artifactId>
     <scope>compile</scope>
-  </dependency>
+</dependency>
 
-  <!-- Structured JSON logging -->
-  <dependency>
+<!-- Structured JSON logging -->
+<dependency>
     <groupId>net.logstash.logback</groupId>
     <artifactId>logstash-logback-encoder</artifactId>
-  </dependency>
+</dependency>
 </dependencies>
 ```
 
@@ -167,42 +167,42 @@ spec:
         prometheus.io/port: "<service-port>"
     spec:
       containers:
-      - name: my-service
-        image: myrepo/my-service:latest
-        ports:
-        - containerPort: <service-port>
-        env:
-        - name: MICRONAUT_ENVIRONMENTS
-          value: "prod"
-        # OTel trace pipeline config
-        - name: OTEL_SERVICE_NAME
-          value: "my-service"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://grafana-alloy.observability.svc.cluster.local:4317"
-        - name: OTEL_TRACES_SAMPLER
-          value: parentbased_traceidratio
-        - name: OTEL_TRACES_SAMPLER_ARG
-          value: "1.0"   # reduce to e.g. "0.2" only for high-traffic services
-        # Health probes (Micronaut exposes /health by default)
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: <service-port>
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: <service-port>
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "500m"
+        - name: my-service
+          image: myrepo/my-service:latest
+          ports:
+            - containerPort: <service-port>
+          env:
+            - name: MICRONAUT_ENVIRONMENTS
+              value: "prod"
+            # OTel trace pipeline config
+            - name: OTEL_SERVICE_NAME
+              value: "my-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://grafana-alloy.observability.svc.cluster.local:4317"
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1.0"   # reduce to e.g. "0.2" only for high-traffic services
+          # Health probes (Micronaut exposes /health by default)
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: <service-port>
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: <service-port>
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
       restartPolicy: Always
 ---
 apiVersion: v1
@@ -213,9 +213,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: <service-port>
-    targetPort: <service-port>
-    protocol: TCP
+    - port: <service-port>
+      targetPort: <service-port>
+      protocol: TCP
   selector:
     app: my-service
 ```
