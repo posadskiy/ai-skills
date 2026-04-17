@@ -14,10 +14,22 @@ Use the **`url`** from **this** app’s Instrumentation snippet. The agent imple
 
 After you have it, either:
 
-- set **`VITE_FARO_URL`** at build time / Docker `--build-arg`, and use **Pattern A** below, or  
-- set a **`DEFAULT_FARO_COLLECT_URL`** constant in `faro.ts` to that exact string (production default) and optionally still allow `VITE_FARO_URL` to override — **Pattern B**.
+- set **`VITE_FARO_URL`** at build time / Docker `--build-arg`, and use **Pattern A** below, or
+- set a **`DEFAULT_FARO_COLLECT_URL`** constant in `faro.ts` to that exact string (production default) and optionally still allow `VITE_FARO_URL` to override — **Pattern B**, or
+- **Pattern C (Docker-friendly)** — use **only** a hardcoded `FARO_COLLECT_URL` (and fixed `app.name`) in a client module; **no** `VITE_*` / `NEXT_PUBLIC_*` for Faro. Optional: `GRAFANA_OBSERVABILITY_FARO_TOKEN` **only** for source map upload at build time.
 
 If the ingest key does not match the Grafana app you open in the UI, or if **CORS allowed origins** on that app do not include your site’s `https://` origin, the browser will show CORS errors and no RUM in that app.
+
+### Anti-pattern: `ENV` optional URL without a build-arg
+
+```dockerfile
+ARG NEXT_PUBLIC_FARO_URL
+ENV NEXT_PUBLIC_FARO_URL=$NEXT_PUBLIC_FARO_URL
+```
+
+If the arg is omitted, Next inlines **`""`**. Then `process.env.NEXT_PUBLIC_FARO_URL ?? default` still yields **`""`** (empty string is not `null`/`undefined`, so `??` does not use the default). Faro never starts; **`grep faro-collector` inside the image** can show nothing. Same idea for `VITE_FARO_URL` + Vite.
+
+**Prefer:** hardcoded URL (Pattern C), or no `ENV` line for that variable, or code that treats `trim() === ""` as unset.
 
 ---
 
@@ -84,6 +96,61 @@ export function initFaro(): void {
 
 export { faro };
 ```
+
+---
+
+## Next.js — `FrontendObservability` client component {#nextjs}
+
+For **App Router** + **`output: "export"`** (static HTML in nginx): no `main.tsx`. Use **`@grafana/faro-web-sdk`** (+ `faro-web-tracing`) in a **`"use client"`** module mounted once from `app/layout.tsx`.
+
+```tsx
+"use client";
+
+import {
+  faro,
+  getWebInstrumentations,
+  initializeFaro,
+} from "@grafana/faro-web-sdk";
+import { TracingInstrumentation } from "@grafana/faro-web-tracing";
+import packageJson from "../package.json";
+
+const FARO_COLLECT_URL = "https://faro-collector-prod-<region>.grafana.net/collect/<ingest-key>";
+const FARO_APP_NAME = "<your-app-name>"; // must match Grafana + Faro webpack plugin appName
+
+const faroUrl =
+  process.env.NODE_ENV === "production" ? FARO_COLLECT_URL : undefined;
+
+export function FrontendObservability(): null {
+  if (!faroUrl || faro.api) return null;
+  try {
+    initializeFaro({
+      url: faroUrl,
+      app: {
+        name: FARO_APP_NAME,
+        version: packageJson.version,
+        environment: process.env.NODE_ENV,
+      },
+      sessionTracking: { samplingRate: 1.0 },
+      instrumentations: [
+        ...getWebInstrumentations({
+          captureConsole: true,
+          enablePerformanceInstrumentation: true,
+        }),
+        new TracingInstrumentation(),
+      ],
+    });
+  } catch {
+    /* optional: log */
+  }
+  return null;
+}
+```
+
+**Per-route views (optional):** small child component using `usePathname` + `faro.api.setView({ name: pathname })` in `useEffect`.
+
+**`next.config`:** import `@grafana/faro-webpack-plugin`; gate on `process.env.GRAFANA_OBSERVABILITY_FARO_TOKEN`; set `productionBrowserSourceMaps` when uploading. **Next 16+:** run **`next build --webpack`** if the default bundler is Turbopack (otherwise custom `webpack()` is ignored).
+
+**Dependencies:** keep **`@grafana/faro-webpack-plugin` in `dependencies`** (not only devDependencies) if `next.config` imports it — Docker / `npm ci` under production may omit devDependencies.
 
 ---
 
@@ -212,6 +279,15 @@ ENV VITE_APP_VERSION=$VITE_APP_VERSION
 # GRAFANA_OBSERVABILITY_FARO_TOKEN intentionally has no ENV line
 ```
 
+**Minimal Next.js / hardcoded-URL Dockerfile** (only source-map token optional):
+
+```dockerfile
+ARG GRAFANA_OBSERVABILITY_FARO_TOKEN
+RUN GRAFANA_OBSERVABILITY_FARO_TOKEN="${GRAFANA_OBSERVABILITY_FARO_TOKEN}" npm run build
+```
+
+Do **not** add `ENV NEXT_PUBLIC_FARO_URL=` (or similar) unless CI always passes a non-empty `--build-arg` — see anti-pattern above.
+
 ---
 
 ## build-and-push.sh changes {#buildScript}
@@ -235,6 +311,18 @@ docker buildx build --platform linux/arm64 \
 ```
 
 Replace `<app-id>` with the ID from your Grafana Cloud Frontend Observability app.
+
+**When static assets look “stuck” (new image tag but old JS):** add **`--no-cache`** to `docker buildx build` for the website image so `npm run build` always runs fresh.
+
+**Forward Grafana token from the host** (not automatic):
+
+```bash
+BUILD_ARGS=()
+if [ -n "${GRAFANA_OBSERVABILITY_FARO_TOKEN:-}" ]; then
+  BUILD_ARGS+=(--build-arg "GRAFANA_OBSERVABILITY_FARO_TOKEN=$GRAFANA_OBSERVABILITY_FARO_TOKEN")
+fi
+docker buildx build ... "${BUILD_ARGS[@]}" ...
+```
 
 ---
 

@@ -2,15 +2,17 @@
 name: react-grafana-observability
 description: >-
   Implements frontend observability (RUM, logs, traces, source maps, alerts,
-  synthetic monitoring) for a React/Vite application using Grafana Faro and
-  Grafana Cloud. Use when the user wants to add observability, monitoring, RUM,
-  error tracking, Web Vitals, source maps, or Grafana Faro to a React app, or
-  when they ask about frontend observability, Grafana Cloud setup for a React
-  application, or how to track JS errors and performance in production.
-compatibility: Requires React with React Router v6, Vite bundler, and a Grafana Cloud account. Nginx JSON log shipping is optional and works with any container runtime or deployment system.
+  synthetic monitoring) for React apps using Grafana Faro and Grafana Cloud.
+  Covers Vite + React Router and Next.js (App Router / static export). Use when
+  the user wants observability, RUM, Web Vitals, source maps, or Grafana Faro,
+  or asks about frontend observability / Docker + Faro gotchas.
+compatibility: >-
+  Primary path: React + Vite + React Router v6. Alternate: Next.js (App Router,
+  static export) + webpack Faro plugin. Grafana Cloud account required. Nginx JSON
+  log shipping optional.
 metadata:
   author: posadskiy
-  stack: React 19, Vite 6, React Router v6/v7, @grafana/faro-react, @grafana/faro-web-tracing, @grafana/faro-rollup-plugin, Nginx, Grafana Cloud, Grafana Alloy
+  stack: React 19, Vite 6 / Next.js 16, React Router v6/v7, @grafana/faro-react, @grafana/faro-web-sdk, @grafana/faro-web-tracing, @grafana/faro-rollup-plugin, @grafana/faro-webpack-plugin, Nginx, Grafana Cloud, Grafana Alloy
 ---
 
 # React + Grafana Cloud Observability
@@ -24,9 +26,32 @@ all flowing into Grafana Cloud.
 
 ---
 
-## Prerequisite — ask the user for the Faro collector URL
+## Prerequisite — collect from the user **before** implementing this skill
 
-**Before wiring code or Docker, the agent must obtain this from the user** (or guide them to copy it from Grafana):
+**Hard stop — collector URL first.** The user must **paste the Faro collector `url` in this chat** (or explicitly confirm they are embedding that **exact** same string in-repo and paste it once for the agent to copy into code). **Do not continue** with this skill until that URL has been received: no `npm install`, no new files, no edits to `main.tsx` / `vite.config` / Docker / CI, and no “we will use `VITE_FARO_URL` later” scaffolding. A message like “implement observability” without the URL is **not** sufficient.
+
+**Do not install packages, edit `main.tsx`, `vite.config`, Docker, or CI until the user has answered the checklist below.** If something is missing, ask for it explicitly and **wait**.
+
+### 1. Source map upload token (optional but tell the user to decide up front)
+
+- **`GRAFANA_OBSERVABILITY_FARO_TOKEN`** — Grafana Cloud access policy token with `sourcemaps:read` + `sourcemaps:write` (often `glc_…`). Used only at **build time** by the Faro Rollup/Webpack plugin to upload hidden source maps.
+- **Ask the user:** whether they want readable stack traces in Grafana. If **yes**, they must **add this variable to CI / secrets / Docker build args** (wherever `vite build` / `next build` runs) if it is **not already** configured — then they provide the token value (or confirm it is already available to the build and the agent should only reference the variable name).
+- If they **do not** want source map uploads, they should say so; the build still works and RUM runs — stacks stay minified.
+
+### 1b. Source map uploader metadata (required only if uploads are enabled)
+
+If the user wants **source map upload** (they said **yes** to the token / de-minified stacks), the Faro Rollup / Webpack plugin needs Grafana values **the agent cannot guess**. **Ask for all of the below before editing `vite.config` / `next.config` with `faroUploader`:**
+
+| Value | Where to copy it |
+|--------|------------------|
+| **`appId`** | Same **Frontend** app → **Instrumentation / Web SDK** snippet or app settings (string / UUID Grafana shows for the app — **not** the same as inventing from the `/collect/` path). |
+| **`stackId`** | Same place — numeric **stack** id for your Grafana Cloud stack (snippet or portal). |
+| **`appName` (exact)** | The **App name** field in Grafana for **this** Frontend app — must match `initializeFaro({ app: { name } })` and the uploader’s `appName`. |
+| **Faro API `endpoint`** | `https://faro-api-prod-<region>.grafana.net/faro/api/v1` where **`<region>` matches the collector host** (e.g. collector `…faro-collector-prod-eu-west-2…` → endpoint `…faro-api-prod-eu-west-2…`). Ask the user to **paste the full endpoint URL** from Grafana if the UI shows it; otherwise pasting the **collector URL** is enough for the agent to derive the region **only** when it follows the standard `faro-collector-prod-<region>` pattern. |
+
+**If source map upload is off**, `appId` / `stackId` / endpoint are **not** required — omit the uploader plugin or leave it gated until the user provides them later.
+
+### 2. Faro collector URL (required for env-based RUM)
 
 - **Faro collector URL** — full HTTPS URL from **Grafana Cloud → Observability → Frontend → _this_ app → Instrumentation / Web SDK**, field `url` in the snippet.
 
@@ -37,13 +62,73 @@ all flowing into Grafana Cloud.
   Example shape only (do **not** reuse for another project):  
   `https://faro-collector-prod-eu-west-2.grafana.net/collect/451ee59b19fd23cfa38502c8993ecf6a`
 
-**Why the agent must ask**
+**Ask the user** to paste that **`url`** after they have the Frontend app open. Do not invent or default to another project’s ingest key. **Receiving the URL is mandatory** — treat “I will add it in CI” without pasting the same string here as **not received**; reply asking for the URL (or the exact string to hardcode) before touching the repo.
 
-1. **Each Frontend Observability app has its own `/collect/<ingest-key>`** — that key routes browser RUM to **that** app. Copying a URL from a **different** repo or app (e.g. another product’s build script) sends data to the **wrong** Grafana app or causes **CORS** failures.
-2. **`VITE_FARO_URL` is inlined at build time** — wrong URL means empty UI for the app the user cares about.
-3. **CORS** is configured **per Grafana Frontend app** — production origins (`https://example.com`, `https://www.example.com`, etc.) must be allowlisted on **the same app** whose collector URL you use. See [references/grafana-cloud-setup.md](references/grafana-cloud-setup.md#cors-and-the-collector-url).
+### 3. Frontend app name — `app.name` / `appName` (required before RUM wiring)
 
-**If the user has not provided the URL yet:** ask them to create or open their Frontend app in Grafana, copy the **`url`** from the instrumentation snippet, and paste it. Do not invent or default to another project’s ingest key.
+**Ask the user** for the **exact App name** string shown in Grafana Cloud for **this** Frontend Observability application (the name they chose when creating the app).
+
+- Use it identically in **`initializeFaro({ app: { name: … } })`** (Vite / Next) and in **`faroUploader({ appName: … })`** when source maps are enabled.
+- **Do not** invent a pretty name from the repo folder — Grafana groups data by this string; a mismatch makes the UI look like the wrong app or an empty app.
+
+**Order of operations:** collector `url` (§2) + exact **app name** (§3) are required before implementing RUM. If §1 is “yes”, also collect §1b **before** adding the uploader plugin.
+
+**Why the agent must ask (collector URL + token workflow)**
+
+1. **Each Frontend Observability app has its own `/collect/<ingest-key>`** — that key routes browser RUM to **that** app. Copying a URL from a **different** repo or app sends data to the **wrong** app or breaks ingestion.
+2. **`VITE_FARO_URL` / `NEXT_PUBLIC_FARO_URL` is inlined at build time** — wrong URL means an empty or misleading Frontend Observability UI for this product.
+3. **`GRAFANA_OBSERVABILITY_FARO_TOKEN` is build-time** — without it in the environment that runs the build, the Faro uploader plugin is skipped; the user should **add** it to CI/secrets **before** expecting de-minified errors (see Step 4 / Step 8).
+
+### CORS and production origins (Grafana UI — not a “paste into chat” requirement)
+
+Browsers send **cross-origin** `POST` requests from your site’s origin to the **Faro collector** host (`*.grafana.net`). The browser will block those responses unless Grafana’s **Frontend** app allowlists your site’s **Origin**.
+
+- **Where it is set:** Grafana Cloud **Frontend** app settings / instrumentation UI for **that** app (see [references/grafana-cloud-setup.md](references/grafana-cloud-setup.md#cors-and-the-collector-url)) — not in your repo’s `.env`.
+- **What the agent should do:** remind the user that after deploy they must allowlist **each** real production origin (`https://…`) on the **same** Frontend app whose collector `url` they pasted. **Do not** treat “list every production URL” as mandatory input in chat unless you are **debugging** failed `collect` requests (network tab shows CORS errors).
+
+**After you have** the collector URL (§2), the exact Grafana **app name** (§3), their **decision on the token** (§1), and — if uploads are on — **appId**, **stackId**, and **endpoint** (§1b), choose one wiring style:
+
+- **Env at build time** — `VITE_FARO_URL` / `NEXT_PUBLIC_FARO_URL` (documented below). Fine when CI always passes a non-empty value.
+- **Hardcoded constant** — put the exact collector URL in source (e.g. `FARO_COLLECT_URL` in a client module). Valid when the user wants zero Faro-related env vars; still the **same** app-specific URL from Grafana (not copied from another product).
+
+---
+
+## Docker / Next.js pitfall — empty `ENV` disables Faro silently
+
+If a Dockerfile does:
+
+```dockerfile
+ARG NEXT_PUBLIC_FARO_URL
+ENV NEXT_PUBLIC_FARO_URL=$NEXT_PUBLIC_FARO_URL
+```
+
+(and the Vite equivalent `ARG VITE_FARO_URL` + `ENV VITE_FARO_URL=$VITE_FARO_URL`)
+
+and the image is built **without** that `--build-arg`, the variable becomes an **empty string** at build time, **not** unset.
+
+In JavaScript, **`"" ?? fallback` keeps `""`** (nullish coalescing only replaces `null` / `undefined`). Code that does `if (!faroUrl) return` then **never initializes Faro**, and bundlers may **tree-shake out** the default collector URL string — production images show **no `faro-collector` in `grep`** even though the app “has” observability code.
+
+**Fix (pick one):**
+
+1. **Do not** `ENV` optional Faro URLs — only pass `ARG` into `RUN` when non-empty, **or** omit those lines and use a **hardcoded** collector URL in code (simplest for Docker-only deploys).
+2. If you keep env-based URLs, treat **empty string like unset** in code (`trim()` / length check before `??`), or always pass explicit `--build-arg` in CI.
+
+**Verify after build:** `docker run --rm <image> grep -r faro-collector /usr/share/nginx/html/_next/static/chunks` or the equivalent static root — expect hits when RUM is wired for production.
+
+---
+
+## Next.js vs Vite (same Grafana Cloud; different wiring)
+
+| Topic | Vite + React Router | Next.js (App Router, static export) |
+|--------|---------------------|-------------------------------------|
+| **Env** | `import.meta.env.VITE_FARO_*`, `import.meta.env.MODE` | `process.env.NODE_ENV`; avoid empty `NEXT_PUBLIC_*` `ENV` in Docker (see above) |
+| **Init** | `initFaro()` top of `main.tsx` | `"use client"` component in root `layout.tsx` (e.g. `FrontendObservability`) |
+| **Router / views** | `withFaroRouterInstrumentation` + `ReactIntegration` | `usePathname` + `faro.api.setView({ name })` (no React Router in App Router) |
+| **Packages** | `@grafana/faro-react` + `faro-web-tracing` | Often `@grafana/faro-web-sdk` + `faro-web-tracing` only |
+| **Source maps** | `@grafana/faro-rollup-plugin` in `vite.config` | `@grafana/faro-webpack-plugin` in `next.config.js` → `webpack()`; **Next 16+** default prod bundler may be Turbopack — use `next build --webpack` so the plugin runs |
+| **Plugin in Docker** | Rollup plugin is devDependency | Put **`@grafana/faro-webpack-plugin` in `dependencies`** if `next.config` imports it — `next.config` loads at build time and `npm ci` with `NODE_ENV=production` can skip devDependencies |
+
+Full Next.js-oriented snippets → [references/code-templates.md](references/code-templates.md#nextjs).
 
 ---
 
@@ -51,11 +136,11 @@ all flowing into Grafana Cloud.
 
 | Pillar | How |
 |--------|-----|
-| **RUM + Web Vitals** | `@grafana/faro-react` SDK in `main.tsx` |
+| **RUM + Web Vitals** | Vite: `@grafana/faro-react` in `main.tsx`. Next: `@grafana/faro-web-sdk` in a client layout component |
 | **JS error tracking** | Faro captures uncaught exceptions + console.error |
-| **Router tracking** | `withFaroRouterInstrumentation` + `ReactIntegration` → per-route metrics |
+| **Router tracking** | Vite: `withFaroRouterInstrumentation` + `ReactIntegration`. Next: `faro.api.setView` + `usePathname` |
 | **Trace correlation** | `TracingInstrumentation` injects W3C `traceparent` into all fetch/XHR — links browser click to backend DB query in Tempo |
-| **Source maps** | `@grafana/faro-rollup-plugin` in `vite.config.ts` — private upload at build time |
+| **Source maps** | Vite: `@grafana/faro-rollup-plugin`. Next: `@grafana/faro-webpack-plugin` + `next build --webpack` |
 | **Nginx access logs** | JSON log format → Alloy → Loki; filter by `{status=~"5.."}` |
 | **Alerts** | 7 predefined Grafana Cloud alerts: Errors Count, New Errors, LCP, CLS, TTFB, FCP, INP |
 | **Synthetic monitoring** | HTTP uptime checks from multiple regions |
@@ -111,7 +196,7 @@ const router = withFaroRouterInstrumentation(createBrowserRouter([
 ## Step 4 — Configure Vite for source maps
 
 Update `vite.config.ts` to:
-1. Use function form `defineConfig(({ mode }) => ...)` 
+1. Use function form `defineConfig(({ mode }) => ...)`
 2. Add `build: { sourcemap: "hidden" }` — generates `.map` files but omits `sourceMappingURL` from JS bundles (source stays private)
 3. Add `faroUploader` plugin guarded by `mode === "production" && !!process.env.GRAFANA_OBSERVABILITY_FARO_TOKEN`
 
@@ -131,7 +216,9 @@ Nginx JSON separately from Java/Logstash JSON.
 
 ## Step 6 — Dockerfile build args
 
-Add to `Dockerfile.prod` in the build stage (use `ARG` without `ENV` for the token — never stored in image):
+Use `ARG` for **`GRAFANA_OBSERVABILITY_FARO_TOKEN`** only on the `RUN npm run build` line (or equivalent) — **do not** `ENV` the token into the final image.
+
+For **Vite**: if you pass `VITE_FARO_URL` / `VITE_APP_VERSION` via Docker, ensure every production build supplies **non-empty** values **or** use a **hardcoded** collector URL in `faro.ts` and drop those `ENV` lines. See **Docker / Next.js pitfall** above.
 
 ```dockerfile
 ARG VITE_FARO_URL
@@ -140,10 +227,12 @@ ARG GRAFANA_OBSERVABILITY_FARO_TOKEN   # build-time only, NOT promoted to ENV
 
 ENV VITE_FARO_URL=$VITE_FARO_URL
 ENV VITE_APP_VERSION=$VITE_APP_VERSION
+# GRAFANA_OBSERVABILITY_FARO_TOKEN intentionally has no ENV line
 ```
 
-`VITE_APP_VERSION` has no hardcoded default. In `faro.ts`, fall back to the version field
-from `package.json` when the env var is absent — see [references/code-templates.md](references/code-templates.md#faroTs).
+`VITE_APP_VERSION` has no hardcoded default. In `faro.ts`, fall back to `package.json` when unset — see [references/code-templates.md](references/code-templates.md#faroTs).
+
+**Repeatable Docker builds:** stale `out/` / `.next` layers can ship old bundles (e.g. missing Faro). Use `docker buildx build --no-cache` in your build script when debugging “deployed tag is new but JS is old”.
 
 ---
 
@@ -175,6 +264,8 @@ GitLab CI, etc.), set them as environment variables or secrets before the build 
 **If building locally**, export them in your shell before running the build command.
 
 The `GRAFANA_OBSERVABILITY_FARO_TOKEN` is optional — the build always succeeds without it.
+
+**Forwarding the token from the host into Docker:** the daemon does not see shell exports automatically — pass `--build-arg GRAFANA_OBSERVABILITY_FARO_TOKEN="$GRAFANA_OBSERVABILITY_FARO_TOKEN"` when the variable is set (wrap in your `build-and-push.sh`).
 
 ---
 

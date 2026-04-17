@@ -16,15 +16,15 @@ for the source map uploader.
 1. Sign in to [grafana.com](https://grafana.com) → select your organization → open your stack → **Launch** Grafana
 2. Left menu → expand **Observability** → select **Frontend**
 3. Click **Create new** → fill in:
-   - **App Name**: e.g. `my-project` (use this exact name as `appName` in `vite.config.ts` and `faro.ts`)
-   - **CORS Allowed Origins**: your production domain (e.g. `https://my-project.com`)
-   - Default attributes: leave empty
+    - **App Name**: e.g. `my-project` (use this exact name as `appName` in `vite.config.ts` and `faro.ts`)
+    - **CORS Allowed Origins**: your production domain (e.g. `https://my-project.com`)
+    - Default attributes: leave empty
 4. Click **Create**
 5. On the **Web SDK Configuration** page Grafana shows a pre-filled `initializeFaro` snippet.
    From this snippet, copy:
-   - `url` value → this is your **`VITE_FARO_URL`**
-   - `appId` value → use in `vite.config.ts` `faroUploader({ appId: ... })`
-   - `stackId` value → use in `vite.config.ts` `faroUploader({ stackId: ... })`
+    - `url` value → this is your **`VITE_FARO_URL`**
+    - `appId` value → use in `vite.config.ts` `faroUploader({ appId: ... })`
+    - `stackId` value → use in `vite.config.ts` `faroUploader({ stackId: ... })`
 
 > The collector URL looks like:
 > `https://faro-collector-prod-eu-west-2.grafana.net/collect/<app-id>`
@@ -90,8 +90,8 @@ No in-cluster agent needed for HTTP checks — Grafana Cloud runs probes from mu
 | API availability | `https://api.<your-domain>/health` | Status 200 |
 
 3. For each check:
-   - Enable **TLS certificate expiry** alert (default: warn at 30 days, critical at 7 days)
-   - Set **alert on 2 consecutive failures** (~2 min detection time)
+    - Enable **TLS certificate expiry** alert (default: warn at 30 days, critical at 7 days)
+    - Set **alert on 2 consecutive failures** (~2 min detection time)
 4. Alert contact point: configure in **Alerting** → **Contact points** (email, Slack, PagerDuty, etc.)
 
 ---
